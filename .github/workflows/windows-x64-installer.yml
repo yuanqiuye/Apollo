@@ -81,8 +81,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-          cache-dependency-path: package-lock.json
 
       - name: Setup MSYS2 UCRT64
         uses: msys2/setup-msys2@v2
