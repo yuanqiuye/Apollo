@@ -133,10 +133,14 @@ jobs:
       - name: Configure Apollo
         shell: pwsh
         run: |
-          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
-          $env:PKG_CONFIG_PATH = "C:\msys64\ucrt64\lib\pkgconfig"
+          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+          $ucrtBin = Split-Path -Parent $cmake
+          $ucrtRoot = Split-Path -Parent $ucrtBin
+          $msysRoot = Split-Path -Parent $ucrtRoot
+          $env:PATH = "$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
+          $env:PKG_CONFIG_PATH = Join-Path $ucrtRoot "lib\pkgconfig"
 
-          & C:\msys64\ucrt64\bin\cmake.exe `
+          & $cmake `
             -S . `
             -B "$env:APOLLO_BUILD_DIR" `
             -G Ninja `
@@ -147,19 +151,28 @@ jobs:
       - name: Build Apollo
         shell: pwsh
         run: |
-          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+          $ucrtBin = Split-Path -Parent $cmake
+          $ucrtRoot = Split-Path -Parent $ucrtBin
+          $msysRoot = Split-Path -Parent $ucrtRoot
+          $env:PATH = "$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
 
-          & C:\msys64\ucrt64\bin\cmake.exe --build "$env:APOLLO_BUILD_DIR" --target web-ui --parallel 4
-          & C:\msys64\ucrt64\bin\cmake.exe --build "$env:APOLLO_BUILD_DIR" --target sunshine --parallel 4
-          & C:\msys64\ucrt64\bin\cmake.exe --build "$env:APOLLO_BUILD_DIR" --target sunshinesvc --parallel 4
+          & $cmake --build "$env:APOLLO_BUILD_DIR" --target web-ui --parallel 4
+          & $cmake --build "$env:APOLLO_BUILD_DIR" --target sunshine --parallel 4
+          & $cmake --build "$env:APOLLO_BUILD_DIR" --target sunshinesvc --parallel 4
 
       - name: Package Apollo installer
         shell: pwsh
         run: |
-          $env:PATH = "C:\Program Files (x86)\NSIS;C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+          $ucrtBin = Split-Path -Parent $cmake
+          $ucrtRoot = Split-Path -Parent $ucrtBin
+          $msysRoot = Split-Path -Parent $ucrtRoot
+          $cpack = Join-Path $ucrtBin "cpack.exe"
+          $env:PATH = "C:\Program Files (x86)\NSIS;$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
           New-Item -ItemType Directory -Force -Path "$env:DIST_DIR" | Out-Null
 
-          & C:\msys64\ucrt64\bin\cpack.exe `
+          & $cpack `
             -G NSIS `
             --config "$env:APOLLO_BUILD_DIR\CPackConfig.cmake" `
             --verbose
