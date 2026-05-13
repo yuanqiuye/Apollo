@@ -173,6 +173,8 @@ jobs:
           & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target web-ui --parallel 4
           & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target sunshine --parallel 4
           & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target sunshinesvc --parallel 4
+          & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target audio-info --parallel 4
+          & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target dxgi-info --parallel 4
 
       - name: Package Apollo installer
         shell: pwsh
