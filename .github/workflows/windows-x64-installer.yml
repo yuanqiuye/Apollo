@@ -147,15 +147,17 @@ jobs:
           $env:CC = Join-Path $ucrtBin "gcc.exe"
           $env:CXX = Join-Path $ucrtBin "g++.exe"
 
-          & "$env:MSYS2_CMAKE" `
-            -S . `
-            -B "$env:APOLLO_BUILD_DIR" `
-            -G Ninja `
-            -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE `
-            -DBUILD_TESTS=OFF `
-            -DCMAKE_C_COMPILER="$env:CC" `
-            -DCMAKE_CXX_COMPILER="$env:CXX" `
-            -DWINUHID_PACKAGE_DIR="$env:WINUHID_PACKAGE_DIR"
+          $cmakeArgs = @(
+            "-S", ".",
+            "-B", "$env:APOLLO_BUILD_DIR",
+            "-G", "Ninja",
+            "-DCMAKE_BUILD_TYPE=$($env:BUILD_TYPE)",
+            "-DBUILD_TESTS=OFF",
+            "-DCMAKE_C_COMPILER=$($env:CC)",
+            "-DCMAKE_CXX_COMPILER=$($env:CXX)",
+            "-DWINUHID_PACKAGE_DIR=$($env:WINUHID_PACKAGE_DIR)"
+          )
+          & "$env:MSYS2_CMAKE" @cmakeArgs
 
       - name: Build Apollo
         shell: pwsh
