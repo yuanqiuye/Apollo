@@ -98,6 +98,7 @@ jobs:
             mingw-w64-ucrt-x86_64-miniupnpc
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-opus
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-zlib
 
@@ -162,6 +163,8 @@ jobs:
       - name: Build Apollo
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $ucrtBin = Split-Path -Parent "$env:MSYS2_CMAKE"
           $env:PATH = "$ucrtBin;$env:MSYS2_USR_BIN;$env:PATH"
 
