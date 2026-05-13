@@ -36,11 +36,23 @@ const config = ref(props.config)
 
           <template #windows>
             <option value="ds4">{{ $t('config.gamepad_ds4') }}</option>
+            <option value="steam">{{ $t('config.gamepad_steam') }}</option>
             <option value="x360">{{ $t('config.gamepad_x360') }}</option>
           </template>
         </PlatformLayout>
       </select>
       <div class="form-text">{{ $t('config.gamepad_desc') }}</div>
+    </div>
+
+    <!-- Virtual Gamepad Backend -->
+    <div class="mb-3" v-if="config.controller === 'enabled' && platform === 'windows'">
+      <label for="gamepad_backend" class="form-label">Virtual gamepad backend</label>
+      <select id="gamepad_backend" class="form-select" v-model="config.gamepad_backend">
+        <option value="auto">{{ $t('_common.auto') }}</option>
+        <option value="vigembus">ViGEmBus</option>
+        <option value="winuhid">WinUHid</option>
+      </select>
+      <div class="form-text">Choose which Windows virtual controller backend Apollo uses for emulated gamepads.</div>
     </div>
 
     <!-- Additional options based on gamepad type -->

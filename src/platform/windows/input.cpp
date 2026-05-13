@@ -10,6 +10,7 @@
 // standard includes
 #include <cmath>
 #include <thread>
+#include <utility>
 
 // lib includes
 #include <ViGEm/Client.h>
@@ -17,17 +18,11 @@
 // local includes
 #include "keylayout.h"
 #include "misc.h"
+#include "steam_controller_winuhid.h"
 #include "src/config.h"
 #include "src/globals.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
-
-#ifdef __MINGW32__
-// DECLARE_HANDLE(HSYNTHETICPOINTERDEVICE);
-WINUSERAPI HSYNTHETICPOINTERDEVICE WINAPI CreateSyntheticPointerDevice(POINTER_INPUT_TYPE pointerType, ULONG maxCount, POINTER_FEEDBACK_MODE mode);
-WINUSERAPI BOOL WINAPI InjectSyntheticPointerInput(HSYNTHETICPOINTERDEVICE device, CONST POINTER_TYPE_INFO *pointerInfo, UINT32 count);
-WINUSERAPI VOID WINAPI DestroySyntheticPointerDevice(HSYNTHETICPOINTERDEVICE device);
-#endif
 
 namespace platf {
   using namespace std::literals;
@@ -442,10 +437,12 @@ namespace platf {
 
   struct input_raw_t {
     ~input_raw_t() {
+      delete steam_controller;
       delete vigem;
     }
 
     vigem_t *vigem;
+    steam_controller_winuhid_t *steam_controller;
 
     decltype(CreateSyntheticPointerDevice) *fnCreateSyntheticPointerDevice;
     decltype(InjectSyntheticPointerInput) *fnInjectSyntheticPointerInput;
@@ -461,6 +458,9 @@ namespace platf {
       delete raw.vigem;
       raw.vigem = nullptr;
     }
+
+    raw.steam_controller = new steam_controller_winuhid_t {};
+    raw.steam_controller->init();
 
     // Get pointers to virtual touch/pen input functions (Win10 1809+)
     raw.fnCreateSyntheticPointerDevice = (decltype(CreateSyntheticPointerDevice) *) GetProcAddress(GetModuleHandleA("user32.dll"), "CreateSyntheticPointerDevice");
@@ -1172,8 +1172,46 @@ namespace platf {
     }
   }
 
+  bool gamepad_backend_allows_vigem() {
+    return config::input.gamepad_backend == "auto"sv ||
+           config::input.gamepad_backend == "vigembus"sv;
+  }
+
+  bool gamepad_backend_allows_winuhid() {
+    return config::input.gamepad_backend == "auto"sv ||
+           config::input.gamepad_backend == "winuhid"sv;
+  }
+
   int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &metadata, feedback_queue_t feedback_queue) {
     auto raw = (input_raw_t *) input.get();
+
+    const bool winuhid_allowed = gamepad_backend_allows_winuhid();
+    const bool vigem_allowed = gamepad_backend_allows_vigem();
+    const bool steam_requested = winuhid_allowed &&
+                                 (config::input.gamepad == "steam"sv ||
+                                  (config::input.gamepad == "auto"sv &&
+                                   metadata.type == LI_CTYPE_STEAM &&
+                                   (metadata.capabilities & LI_CCAP_RAW_HID_REPORTS)));
+
+    if (!winuhid_allowed && config::input.gamepad == "steam"sv) {
+      BOOST_LOG(warning) << "Gamepad " << id.globalIndex << " could not be created as Steam Controller because the selected gamepad backend is not WinUHid"sv;
+      return -1;
+    }
+
+    if (steam_requested) {
+      if (!raw->steam_controller || !raw->steam_controller->is_available()) {
+        BOOST_LOG(warning) << "Gamepad " << id.globalIndex << " could not be created as Steam Controller because WinUHid is unavailable"sv;
+        return -1;
+      }
+
+      BOOST_LOG(info) << "Gamepad " << id.globalIndex << " will be Steam Controller through WinUHid"sv;
+      return raw->steam_controller->alloc_gamepad(id, metadata, std::move(feedback_queue));
+    }
+
+    if (!vigem_allowed) {
+      BOOST_LOG(warning) << "Gamepad " << id.globalIndex << " could not be created because the selected WinUHid backend does not provide a preset for gamepad type "sv << config::input.gamepad;
+      return -1;
+    }
 
     if (!raw->vigem) {
       return 0;
@@ -1228,6 +1266,11 @@ namespace platf {
 
   void free_gamepad(input_t &input, int nr) {
     auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(nr)) {
+      raw->steam_controller->free_gamepad(nr);
+      return;
+    }
 
     if (!raw->vigem) {
       return;
@@ -1487,7 +1530,14 @@ namespace platf {
    * @param gamepad_state The gamepad button/axis state sent from the client.
    */
   void gamepad_update(input_t &input, int nr, const gamepad_state_t &gamepad_state) {
-    auto vigem = ((input_raw_t *) input.get())->vigem;
+    auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(nr)) {
+      raw->steam_controller->update(nr, gamepad_state);
+      return;
+    }
+
+    auto vigem = raw->vigem;
 
     // If there is no gamepad support
     if (!vigem) {
@@ -1519,7 +1569,14 @@ namespace platf {
    * @param touch The touch event.
    */
   void gamepad_touch(input_t &input, const gamepad_touch_t &touch) {
-    auto vigem = ((input_raw_t *) input.get())->vigem;
+    auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(touch.id.globalIndex)) {
+      raw->steam_controller->touch(touch);
+      return;
+    }
+
+    auto vigem = raw->vigem;
 
     // If there is no gamepad support
     if (!vigem) {
@@ -1625,7 +1682,14 @@ namespace platf {
    * @param motion The motion event.
    */
   void gamepad_motion(input_t &input, const gamepad_motion_t &motion) {
-    auto vigem = ((input_raw_t *) input.get())->vigem;
+    auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(motion.id.globalIndex)) {
+      raw->steam_controller->motion(motion);
+      return;
+    }
+
+    auto vigem = raw->vigem;
 
     // If there is no gamepad support
     if (!vigem) {
@@ -1652,7 +1716,14 @@ namespace platf {
    * @param battery The battery event.
    */
   void gamepad_battery(input_t &input, const gamepad_battery_t &battery) {
-    auto vigem = ((input_raw_t *) input.get())->vigem;
+    auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(battery.id.globalIndex)) {
+      raw->steam_controller->battery(battery);
+      return;
+    }
+
+    auto vigem = raw->vigem;
 
     // If there is no gamepad support
     if (!vigem) {
@@ -1719,6 +1790,19 @@ namespace platf {
     ds4_update_ts_and_send(vigem, battery.id.globalIndex);
   }
 
+  /**
+   * @brief Sends a raw controller HID report to the OS.
+   * @param input The global input context.
+   * @param report The raw HID report.
+   */
+  void gamepad_raw_hid(input_t &input, const gamepad_raw_hid_report_t &report) {
+    auto raw = (input_raw_t *) input.get();
+
+    if (raw->steam_controller && raw->steam_controller->owns_gamepad(report.id.globalIndex)) {
+      raw->steam_controller->raw_hid(report);
+    }
+  }
+
   void freeInput(void *p) {
     auto input = (input_raw_t *) p;
 
@@ -1731,20 +1815,33 @@ namespace platf {
         supported_gamepad_t {"auto", true, ""},
         supported_gamepad_t {"x360", false, ""},
         supported_gamepad_t {"ds4", false, ""},
+        supported_gamepad_t {"steam", false, ""},
       };
 
       return gps;
     }
 
-    auto vigem = ((input_raw_t *) input)->vigem;
-    auto enabled = vigem != nullptr;
-    auto reason = enabled ? "" : "gamepads.vigem-not-available";
+    auto raw = (input_raw_t *) input;
+    auto vigem = raw->vigem;
+    auto vigem_allowed = gamepad_backend_allows_vigem();
+    auto enabled = vigem != nullptr && vigem_allowed;
+    auto reason = enabled ? "" : (vigem_allowed ? "gamepads.vigem-not-available" : "gamepads.backend-not-selected");
+    auto winuhid_allowed = gamepad_backend_allows_winuhid();
+    auto steam_enabled = winuhid_allowed && raw->steam_controller && raw->steam_controller->is_available();
+    auto steam_reason = steam_enabled ? "" : (winuhid_allowed ? "gamepads.winuhid-not-available" : "gamepads.backend-not-selected");
 
     // ds4 == ps4
     static std::vector gps {
       supported_gamepad_t {"auto", true, reason},
       supported_gamepad_t {"x360", enabled, reason},
-      supported_gamepad_t {"ds4", enabled, reason}
+      supported_gamepad_t {"ds4", enabled, reason},
+      supported_gamepad_t {"steam", steam_enabled, steam_reason}
+    };
+    gps = {
+      supported_gamepad_t {"auto", true, ""},
+      supported_gamepad_t {"x360", enabled, reason},
+      supported_gamepad_t {"ds4", enabled, reason},
+      supported_gamepad_t {"steam", steam_enabled, steam_reason}
     };
 
     for (auto &[name, is_enabled, reason_disabled] : gps) {
@@ -1766,6 +1863,11 @@ namespace platf {
     // We support controller touchpad input as long as we're not emulating X360
     if (config::input.gamepad != "x360"sv) {
       caps |= platform_caps::controller_touch;
+    }
+
+    if (gamepad_backend_allows_winuhid() &&
+        (config::input.gamepad == "steam"sv || config::input.gamepad == "auto"sv)) {
+      caps |= platform_caps::controller_raw_hid;
     }
 
     // We support pen and touch input on Win10 1809+

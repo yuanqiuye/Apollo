@@ -109,6 +109,10 @@ namespace platf {
     platf::gamepad::battery(raw, battery);
   }
 
+  void gamepad_raw_hid(input_t &input, const gamepad_raw_hid_report_t &report) {
+    // Raw HID forwarding is only implemented by platform backends that expose a native HID device.
+  }
+
   platform_caps::caps_t get_capabilities() {
     platform_caps::caps_t caps = 0;
     // TODO: if has_uinput

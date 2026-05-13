@@ -4,15 +4,43 @@ install(TARGETS sunshine RUNTIME DESTINATION "." COMPONENT application)
 # Hardening: include zlib1.dll (loaded via LoadLibrary() in openssl's libcrypto.a)
 install(FILES "${ZLIB}" DESTINATION "." COMPONENT application)
 
+set(WINUHID_PACKAGE_DIR
+        "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/gamepad/winuhid"
+        CACHE PATH "Directory containing Apollo's WinUHid runtime and driver package")
+set(WINUHID_RUNTIME_DLLS
+        "${WINUHID_PACKAGE_DIR}/WinUHid.dll"
+        "${WINUHID_PACKAGE_DIR}/WinUHidDevs.dll")
+set(WINUHID_PACKAGE_FILES
+        ${WINUHID_RUNTIME_DLLS}
+        "${WINUHID_PACKAGE_DIR}/WinUHidDriver.cat"
+        "${WINUHID_PACKAGE_DIR}/WinUHidDriver.dll"
+        "${WINUHID_PACKAGE_DIR}/WinUHidDriver.inf"
+        "${WINUHID_PACKAGE_DIR}/WinUHidSteamControllerTestSigning.cer")
+foreach(WINUHID_PACKAGE_FILE ${WINUHID_PACKAGE_FILES})
+    if(NOT EXISTS "${WINUHID_PACKAGE_FILE}")
+        message(FATAL_ERROR "Required WinUHid package file is missing: ${WINUHID_PACKAGE_FILE}")
+    endif()
+endforeach()
+message(STATUS "WinUHid package directory: ${WINUHID_PACKAGE_DIR}")
+install(FILES ${WINUHID_RUNTIME_DLLS}
+        DESTINATION "."
+        COMPONENT application)
+file(COPY ${WINUHID_RUNTIME_DLLS}
+        DESTINATION "${CMAKE_BINARY_DIR}")
+
 # ViGEmBus installer
-set(VIGEMBUS_INSTALLER "${CMAKE_BINARY_DIR}/vigembus_installer.exe")
-file(DOWNLOAD
-        "https://github.com/nefarius/ViGEmBus/releases/download/v1.21.442.0/ViGEmBus_1.21.442_x64_x86_arm64.exe"
-        ${VIGEMBUS_INSTALLER}
-        SHOW_PROGRESS
-        EXPECTED_HASH SHA256=155c50f1eec07bdc28d2f61a3e3c2c6c132fee7328412de224695f89143316bc
-        TIMEOUT 60
-)
+set(VIGEMBUS_INSTALLER
+        "${CMAKE_BINARY_DIR}/vigembus_installer.exe"
+        CACHE FILEPATH "Path to the cached ViGEmBus installer")
+if(NOT EXISTS "${VIGEMBUS_INSTALLER}")
+    file(DOWNLOAD
+            "https://github.com/nefarius/ViGEmBus/releases/download/v1.21.442.0/ViGEmBus_1.21.442_x64_x86_arm64.exe"
+            ${VIGEMBUS_INSTALLER}
+            SHOW_PROGRESS
+            EXPECTED_HASH SHA256=155c50f1eec07bdc28d2f61a3e3c2c6c132fee7328412de224695f89143316bc
+            TIMEOUT 60
+    )
+endif()
 install(FILES ${VIGEMBUS_INSTALLER}
         DESTINATION "scripts"
         RENAME "vigembus_installer.exe"
@@ -52,6 +80,10 @@ install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/firewall/"
         COMPONENT firewall)
 install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/gamepad/"
         DESTINATION "scripts"
+        COMPONENT gamepad
+        PATTERN "winuhid" EXCLUDE)
+install(DIRECTORY "${WINUHID_PACKAGE_DIR}/"
+        DESTINATION "scripts/winuhid"
         COMPONENT gamepad)
 
 # Sunshine assets

@@ -390,6 +390,19 @@ namespace input {
       << "--end controller battery packet--"sv;
   }
 
+  /**
+   * @brief Prints a controller raw HID packet.
+   * @param packet The controller raw HID packet.
+   */
+  void print(PSS_CONTROLLER_RAW_HID_PACKET packet) {
+    BOOST_LOG(verbose)
+      << "--begin controller raw HID packet--"sv << std::endl
+      << "controllerNumber ["sv << util::hex(packet->controllerNumber).to_string_view() << ']' << std::endl
+      << "reportType ["sv << util::hex(packet->reportType).to_string_view() << ']' << std::endl
+      << "reportLength ["sv << util::hex(packet->reportLength).to_string_view() << ']' << std::endl
+      << "--end controller raw HID packet--"sv;
+  }
+
   void print(void *payload) {
     auto header = (PNV_INPUT_HEADER) payload;
 
@@ -437,6 +450,9 @@ namespace input {
         break;
       case SS_CONTROLLER_BATTERY_MAGIC:
         print((PSS_CONTROLLER_BATTERY_PACKET) payload);
+        break;
+      case SS_CONTROLLER_RAW_HID_MAGIC:
+        print((PSS_CONTROLLER_RAW_HID_PACKET) payload);
         break;
     }
   }
@@ -1078,6 +1094,41 @@ namespace input {
     platf::gamepad_battery(platf_input, battery);
   }
 
+  /**
+   * @brief Called to pass a raw controller HID report to the platform backend.
+   * @param input The input context pointer.
+   * @param packet The raw HID packet.
+   */
+  void passthrough(std::shared_ptr<input_t> &input, PSS_CONTROLLER_RAW_HID_PACKET packet) {
+    if (!config::input.controller) {
+      return;
+    }
+
+    if (packet->controllerNumber < 0 || packet->controllerNumber >= input->gamepads.size()) {
+      BOOST_LOG(warning) << "ControllerNumber out of range ["sv << packet->controllerNumber << ']';
+      return;
+    }
+
+    if (packet->reportLength == 0 || packet->reportLength > SS_CONTROLLER_RAW_HID_MAX_REPORT_SIZE) {
+      BOOST_LOG(warning) << "Raw HID report length out of range ["sv << util::hex(packet->reportLength).to_string_view() << ']';
+      return;
+    }
+
+    auto &gamepad = input->gamepads[packet->controllerNumber];
+    if (gamepad.id < 0) {
+      BOOST_LOG(warning) << "ControllerNumber ["sv << packet->controllerNumber << "] not allocated"sv;
+      return;
+    }
+
+    platf::gamepad_raw_hid_report_t report {};
+    report.id = {gamepad.id, packet->controllerNumber};
+    report.report_type = static_cast<platf::gamepad_raw_hid_report_type_e>(packet->reportType);
+    report.report_length = packet->reportLength;
+    std::copy_n(packet->reportData, report.report_length, report.report.begin());
+
+    platf::gamepad_raw_hid(platf_input, report);
+  }
+
   void passthrough(std::shared_ptr<input_t> &input, PNV_MULTI_CONTROLLER_PACKET packet) {
     if (!config::input.controller) {
       return;
@@ -1568,6 +1619,9 @@ namespace input {
       case SS_CONTROLLER_BATTERY_MAGIC:
         passthrough(input, (PSS_CONTROLLER_BATTERY_PACKET) payload);
         break;
+      case SS_CONTROLLER_RAW_HID_MAGIC:
+        passthrough(input, (PSS_CONTROLLER_RAW_HID_PACKET) payload);
+        break;
     }
   }
 
@@ -1594,6 +1648,7 @@ namespace input {
         case SS_CONTROLLER_TOUCH_MAGIC:
         case SS_CONTROLLER_MOTION_MAGIC:
         case SS_CONTROLLER_BATTERY_MAGIC:
+        case SS_CONTROLLER_RAW_HID_MAGIC:
           if (!(permission & crypto::PERM::input_controller)) {
             return;
           } else {

@@ -563,6 +563,7 @@ namespace config {
       platf::supported_gamepads(nullptr).front().name.data(),
       platf::supported_gamepads(nullptr).front().name.size(),
     },  // Default gamepad
+    "auto"s,  // Default gamepad backend
     true,  // back as touchpad click enabled (manual DS4 only)
     true,  // client gamepads with motion events are emulated as DS4
     true,  // client gamepads with touchpads are emulated as DS4
@@ -1087,6 +1088,15 @@ namespace config {
     return opts;
   }
 
+  std::vector<::std::string_view> &get_supported_gamepad_backend_options() {
+    static std::vector<::std::string_view> opts {
+      "auto"sv,
+      "vigembus"sv,
+      "winuhid"sv,
+    };
+    return opts;
+  }
+
   void apply_config(std::unordered_map<std::string, std::string> &&vars) {
 #ifndef __ANDROID__
     // TODO: Android can possibly support this
@@ -1278,6 +1288,7 @@ namespace config {
     }
 
     string_restricted_f(vars, "gamepad"s, input.gamepad, get_supported_gamepad_options());
+    string_restricted_f(vars, "gamepad_backend"s, input.gamepad_backend, get_supported_gamepad_backend_options());
     bool_f(vars, "ds4_back_as_touchpad_click", input.ds4_back_as_touchpad_click);
     bool_f(vars, "motion_as_ds4", input.motion_as_ds4);
     bool_f(vars, "touchpad_as_ds4", input.touchpad_as_ds4);

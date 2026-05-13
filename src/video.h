@@ -48,6 +48,8 @@ namespace video {
 
     int encodingFramerate; // Requested display framerate
     bool input_only;
+
+    int profile = 100;  // H.264 profile_idc; default to High profile.
   };
 
   platf::mem_type_e map_base_dev_type(AVHWDeviceType type);

@@ -5,7 +5,10 @@
 #pragma once
 
 // standard includes
+#include <algorithm>
+#include <array>
 #include <bitset>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -109,6 +112,15 @@ namespace platf {
     set_motion_event_state,  ///< Set motion event state
     set_rgb_led,  ///< Set RGB LED
     set_adaptive_triggers,  ///< Set adaptive triggers
+    raw_hid_report,  ///< Raw controller HID report for native-device forwarding
+  };
+
+  constexpr std::size_t MAX_RAW_HID_REPORT_SIZE = 64;
+
+  enum class gamepad_raw_hid_report_type_e : std::uint8_t {
+    input = 1,
+    output = 2,
+    feature = 3,
   };
 
   struct gamepad_feedback_msg_t {
@@ -153,6 +165,18 @@ namespace platf {
       return msg;
     }
 
+    static gamepad_feedback_msg_t make_raw_hid_report(std::uint16_t id, gamepad_raw_hid_report_type_e report_type, const std::uint8_t *report, std::uint8_t report_length) {
+      gamepad_feedback_msg_t msg {};
+      msg.type = gamepad_feedback_e::raw_hid_report;
+      msg.id = id;
+      msg.data.raw_hid_report.report_type = static_cast<std::uint8_t>(report_type);
+      msg.data.raw_hid_report.report_length = std::min<std::uint8_t>(report_length, MAX_RAW_HID_REPORT_SIZE);
+      if (report && msg.data.raw_hid_report.report_length) {
+        std::copy_n(report, msg.data.raw_hid_report.report_length, msg.data.raw_hid_report.report.begin());
+      }
+      return msg;
+    }
+
     gamepad_feedback_e type;
     std::uint16_t id;
 
@@ -186,6 +210,12 @@ namespace platf {
         std::array<uint8_t, 10> left;
         std::array<uint8_t, 10> right;
       } adaptive_triggers;
+
+      struct {
+        std::uint8_t report_type;
+        std::uint8_t report_length;
+        std::array<std::uint8_t, MAX_RAW_HID_REPORT_SIZE> report;
+      } raw_hid_report;
     } data;
   };
 
@@ -280,6 +310,7 @@ namespace platf {
 
     constexpr caps_t pen_touch = 0x01;  // Pen and touch events
     constexpr caps_t controller_touch = 0x02;  // Controller touch events
+    constexpr caps_t controller_raw_hid = 0x04;  // Raw controller HID report forwarding
   };  // namespace platform_caps
 
   struct gamepad_state_t {
@@ -301,6 +332,13 @@ namespace platf {
     // client. It must be used when communicating back to the client via
     // the input feedback queue.
     std::uint8_t clientRelativeIndex;
+  };
+
+  struct gamepad_raw_hid_report_t {
+    gamepad_id_t id;
+    gamepad_raw_hid_report_type_e report_type;
+    std::uint8_t report_length;
+    std::array<std::uint8_t, MAX_RAW_HID_REPORT_SIZE> report;
   };
 
   struct gamepad_arrival_t {
@@ -809,6 +847,7 @@ namespace platf {
    * @param battery The battery event.
    */
   void gamepad_battery(input_t &input, const gamepad_battery_t &battery);
+  void gamepad_raw_hid(input_t &input, const gamepad_raw_hid_report_t &report);
 
   /**
    * @brief Create a new virtual gamepad.

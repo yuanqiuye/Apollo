@@ -137,17 +137,7 @@ namespace platf::dxgi {
     } catch (winrt::hresult_error &e) {
       BOOST_LOG(warning) << "Screen capture may not be fully supported on this device for this release of Windows: failed to disable border around capture area: [0x"sv << util::hex(e.code()).to_string_view() << ']';
     }
-    try {
-      if (winrt::ApiInformation::IsPropertyPresent(L"Windows.Graphics.Capture.GraphicsCaptureSession", L"MinUpdateInterval")) {
-        capture_session.MinUpdateInterval(winrt::TimeSpan{ 10000000 / (config.framerate * 2) });
-      }
-      else {
-        BOOST_LOG(warning) << "Can't set MinUpdateInterval";
-      }
-    }
-    catch (winrt::hresult_error &e) {
-      BOOST_LOG(warning) << "Screen capture may not be fully supported on this device for this release of Windows: failed to set MinUpdateInterval: [0x"sv << util::hex(e.code()).to_string_view() << ']';
-    }
+    BOOST_LOG(debug) << "Skipping GraphicsCaptureSession::MinUpdateInterval; the local C++/WinRT headers do not expose that API";
     try {
       capture_session.StartCapture();
     } catch (winrt::hresult_error &e) {

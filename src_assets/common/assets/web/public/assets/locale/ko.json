@@ -210,6 +210,7 @@
     "gamepad_ds4_manual": "DS4 선택 옵션",
     "gamepad_ds5": "DS5 (PS5)",
     "gamepad_switch": "닌텐도 프로 (스위치 컨트롤러)",
+    "gamepad_steam": "Steam Controller (WinUHid)",
     "gamepad_manual": "DS4 수동 옵션",
     "gamepad_x360": "X360 (Xbox 360)",
     "gamepad_xone": "XOne (Xbox One)",

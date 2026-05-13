@@ -331,7 +331,7 @@ editing the `conf` file in a text editor. Use the examples as reference.
             @endcode</td>
     </tr>
     <tr>
-        <td rowspan="6">Choices</td>
+        <td rowspan="7">Choices</td>
         <td>ds4</td>
         <td>DualShock 4 controller (PS4)
             @note{This option applies to Windows only.}</td>
@@ -347,6 +347,11 @@ editing the `conf` file in a text editor. Use the examples as reference.
             @note{This option applies to Linux only.}</td>
     </tr>
     <tr>
+        <td>steam</td>
+        <td>Steam Controller through WinUHid
+            @note{This option applies to Windows only and requires the WinUHid driver package.}</td>
+    </tr>
+    <tr>
         <td>x360</td>
         <td>Xbox 360 controller
             @note{This option applies to Windows only.}</td>
@@ -355,6 +360,49 @@ editing the `conf` file in a text editor. Use the examples as reference.
         <td>xone</td>
         <td>Xbox One controller
             @note{This option applies to Linux only.}</td>
+    </tr>
+</table>
+
+### gamepad_backend
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            The Windows virtual gamepad backend to use after Apollo selects the emulated gamepad type.
+            <br>
+            <br>
+            `auto` preserves Apollo's default behavior: Steam Controller raw-HID clients use WinUHid, while
+            normalized Xbox/DS4-style clients use ViGEmBus. Explicit `vigembus` disables WinUHid-backed
+            Steam Controller allocation. Explicit `winuhid` only allows WinUHid-backed devices that Apollo
+            currently has presets for.
+            @note{This option applies to Windows only.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            auto
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            gamepad_backend = auto
+            @endcode</td>
+    </tr>
+    <tr>
+        <td rowspan="3">Choices</td>
+        <td>auto</td>
+        <td>Use the backend implied by the selected or auto-detected gamepad type.</td>
+    </tr>
+    <tr>
+        <td>vigembus</td>
+        <td>Use ViGEmBus-backed Xbox 360 or DualShock 4 emulation.</td>
+    </tr>
+    <tr>
+        <td>winuhid</td>
+        <td>Use WinUHid-backed presets. Apollo currently provides the Steam Controller preset.</td>
     </tr>
 </table>
 

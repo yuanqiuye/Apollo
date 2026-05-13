@@ -521,6 +521,10 @@ const KeyCodeMap kKeyCodesMap[] = {
     // Unimplemented
   }
 
+  void gamepad_raw_hid(input_t &input, const gamepad_raw_hid_report_t &report) {
+    // Unimplemented
+  }
+
   input_t input() {
     input_t result {new macos_input_t()};
 

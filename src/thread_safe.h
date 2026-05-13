@@ -535,6 +535,23 @@ namespace safe {
       return post;
     }
 
+    void set_wake_callback(std::function<void()> callback) {
+      std::lock_guard lg {mutex};
+      wake_callback = std::move(callback);
+    }
+
+    void wake() {
+      std::function<void()> callback;
+      {
+        std::lock_guard lg {mutex};
+        callback = wake_callback;
+      }
+
+      if (callback) {
+        callback();
+      }
+    }
+
     void cleanup() {
       std::lock_guard lg {mutex};
 
@@ -552,6 +569,7 @@ namespace safe {
     std::mutex mutex;
 
     std::map<std::string, std::weak_ptr<void>, std::less<>> id_to_post;
+    std::function<void()> wake_callback;
   };
 
   inline void cleanup(mail_raw_t *mail) {

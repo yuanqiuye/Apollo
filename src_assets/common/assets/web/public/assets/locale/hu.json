@@ -217,6 +217,7 @@
     "gamepad_ds5": "DS5 (PS5)",
     "gamepad_ds5_manual": "DS5 kiválasztási lehetőségek",
     "gamepad_switch": "Nintendo Pro (Switch)",
+    "gamepad_steam": "Steam Controller (WinUHid)",
     "gamepad_manual": "Kézi DS4 opciók",
     "gamepad_x360": "X360 (Xbox 360)",
     "gamepad_xone": "XOne (Xbox One)",

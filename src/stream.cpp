@@ -4,6 +4,8 @@
  */
 
 // standard includes
+#include <array>
+#include <cstring>
 #include <fstream>
 #include <future>
 #include <queue>
@@ -53,6 +55,7 @@ extern "C" {
 #define IDX_SET_CLIPBOARD 16
 #define IDX_FILE_TRANSFER_NONCE_REQUEST 17
 #define IDX_SET_ADAPTIVE_TRIGGERS 18
+#define IDX_CONTROLLER_RAW_HID 19
 
 static const short packetTypes[] = {
   0x0305,  // Start A
@@ -74,6 +77,7 @@ static const short packetTypes[] = {
   0x3001,  // Set Clipboard (Apollo protocol extension)
   0x3002,  // File transfer nonce request (Apollo protocol extension)
   0x5503,  // Set Adaptive triggers (Sunshine protocol extension)
+  0x5505,  // Controller raw HID report (Sunshine protocol extension)
 };
 
 namespace asio = boost::asio;
@@ -210,6 +214,15 @@ namespace stream {
     std::uint8_t right[DS_EFFECT_PAYLOAD_SIZE];
   };
 
+  struct control_controller_raw_hid_t {
+    control_header_v2 header;
+
+    std::uint16_t id;
+    std::uint8_t report_type;
+    std::uint8_t report_length;
+    std::uint8_t report[LI_HID_MAX_REPORT_SIZE];
+  };
+
   struct control_hdr_mode_t {
     control_header_v2 header;
 
@@ -272,8 +285,27 @@ namespace stream {
 
   class control_server_t {
   public:
+    ~control_server_t() {
+      if (_wake_socket != ENET_SOCKET_NULL) {
+        enet_socket_destroy(_wake_socket);
+      }
+    }
+
     int bind(net::af_e address_family, std::uint16_t port) {
       _host = net::host_create(address_family, _addr, port);
+      if (_host) {
+        _host->intercept = control_wake_intercept;
+      }
+
+      auto family = address_family == net::IPV4 ? AF_INET : AF_INET6;
+      _wake_socket = enet_socket_create(family, ENET_SOCKET_TYPE_DATAGRAM);
+      if (_wake_socket != ENET_SOCKET_NULL) {
+        auto loopback = address_family == net::IPV4 ? "127.0.0.1" : "::1";
+        if (enet_address_set_host(&_wake_addr, loopback) || enet_address_set_port(&_wake_addr, port)) {
+          enet_socket_destroy(_wake_socket);
+          _wake_socket = ENET_SOCKET_NULL;
+        }
+      }
 
       return !(bool) _host;
     }
@@ -289,6 +321,17 @@ namespace stream {
     //   broadcast_ctx_t refers to control_server_t
     // Therefore, iterate is implemented further down the source file
     void iterate(std::chrono::milliseconds timeout);
+
+    void wake() {
+      if (_wake_socket == ENET_SOCKET_NULL) {
+        return;
+      }
+
+      ENetBuffer buffer {};
+      buffer.data = const_cast<std::uint8_t *>(control_wake_payload.data());
+      buffer.dataLength = control_wake_payload.size();
+      enet_socket_send(_wake_socket, &_wake_addr, nullptr, &buffer, 1);
+    }
 
     /**
      * @brief Call the handler for a given control stream message.
@@ -327,8 +370,32 @@ namespace stream {
     // ENet peer to session mapping for sessions with a peer connected
     sync_util::sync_t<std::map<net::peer_t, session_t *>> _peer_to_session;
 
+    static constexpr std::uint32_t control_wake_event_data = 0x5354574B;  // "STWK"
+    static constexpr std::array<std::uint8_t, 16> control_wake_payload {
+      0x41, 0x50, 0x4C, 0x4F, 0x2D, 0x52, 0x41, 0x57,
+      0x48, 0x49, 0x44, 0x2D, 0x57, 0x41, 0x4B, 0x45
+    };
+
+    static int control_wake_intercept(ENetHost *host, ENetEvent *event) {
+      if (host->receivedDataLength != control_wake_payload.size() ||
+          std::memcmp(host->receivedData, control_wake_payload.data(), control_wake_payload.size()) != 0) {
+        return 0;
+      }
+
+      if (event) {
+        event->type = ENET_EVENT_TYPE_CONNECT;
+        event->peer = nullptr;
+        event->packet = nullptr;
+        event->data = control_wake_event_data;
+      }
+
+      return 1;
+    }
+
     ENetAddress _addr;
     net::host_t _host;
+    ENetAddress _wake_addr {};
+    ENetSocket _wake_socket {ENET_SOCKET_NULL};
   };
 
   struct broadcast_ctx_t {
@@ -578,6 +645,10 @@ namespace stream {
     auto res = enet_host_service(_host.get(), &event, timeout.count());
 
     if (res > 0) {
+      if (!event.peer) {
+        return;
+      }
+
       auto session = get_session(event.peer, event.data);
       if (!session) {
         BOOST_LOG(warning) << "Rejected connection from ["sv << platf::from_sockaddr((sockaddr *) &event.peer->address.address) << "]: it's not properly set up"sv;
@@ -879,6 +950,23 @@ namespace stream {
       plaintext.type_right = msg.data.adaptive_triggers.type_right;
       std::ranges::copy(msg.data.adaptive_triggers.right, plaintext.right);
 
+      std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext)) + crypto::cipher::tag_size>
+        encrypted_payload;
+
+      payload = encode_control(session, util::view(plaintext), encrypted_payload);
+    } else if (msg.type == platf::gamepad_feedback_e::raw_hid_report) {
+      control_controller_raw_hid_t plaintext {};
+      plaintext.header.type = packetTypes[IDX_CONTROLLER_RAW_HID];
+      plaintext.header.payloadLength = sizeof(plaintext) - sizeof(control_header_v2);
+
+      auto &data = msg.data.raw_hid_report;
+
+      plaintext.id = util::endian::little(msg.id);
+      plaintext.report_type = data.report_type;
+      plaintext.report_length = std::min<std::uint8_t>(data.report_length, LI_HID_MAX_REPORT_SIZE);
+      std::copy_n(data.report.begin(), plaintext.report_length, plaintext.report);
+
+      BOOST_LOG(verbose) << "Raw HID report: "sv << msg.id << " :: type "sv << util::hex(data.report_type).to_string_view() << " :: len "sv << util::hex(data.report_length).to_string_view();
       std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext)) + crypto::cipher::tag_size>
         encrypted_payload;
 
@@ -2043,6 +2131,7 @@ namespace stream {
       session.audioThread.join();
       BOOST_LOG(debug) << "Waiting for control to end..."sv;
       session.controlEnd.view();
+      session.mail->set_wake_callback({});
       // Reset input on session stop to avoid stuck repeated keys
       BOOST_LOG(debug) << "Resetting Input..."sv;
       input::reset(session.input);
@@ -2093,6 +2182,12 @@ namespace stream {
       if (!session.broadcast_ref) {
         return -1;
       }
+      auto control_wake_ref = session.broadcast_ref;
+      session.mail->set_wake_callback([control_wake_ref]() mutable {
+        if (control_wake_ref) {
+          control_wake_ref->control_server.wake();
+        }
+      });
 
       session.control.expected_peer_address = addr_string;
       BOOST_LOG(debug) << "Expecting incoming session connections from "sv << addr_string;
