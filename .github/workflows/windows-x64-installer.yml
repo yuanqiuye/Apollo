@@ -101,6 +101,14 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-zlib
 
+      - name: Resolve MSYS2 tool paths
+        shell: msys2 {0}
+        run: |
+          echo "MSYS2_CMAKE=$(cygpath -w /ucrt64/bin/cmake.exe)" >> "$GITHUB_ENV"
+          echo "MSYS2_CPACK=$(cygpath -w /ucrt64/bin/cpack.exe)" >> "$GITHUB_ENV"
+          echo "MSYS2_UCRT_ROOT=$(cygpath -w /ucrt64)" >> "$GITHUB_ENV"
+          echo "MSYS2_USR_BIN=$(cygpath -w /usr/bin)" >> "$GITHUB_ENV"
+
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis -y --no-progress
@@ -133,46 +141,40 @@ jobs:
       - name: Configure Apollo
         shell: pwsh
         run: |
-          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
-          $ucrtBin = Split-Path -Parent $cmake
-          $ucrtRoot = Split-Path -Parent $ucrtBin
-          $msysRoot = Split-Path -Parent $ucrtRoot
-          $env:PATH = "$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
-          $env:PKG_CONFIG_PATH = Join-Path $ucrtRoot "lib\pkgconfig"
+          $ucrtBin = Split-Path -Parent "$env:MSYS2_CMAKE"
+          $env:PATH = "$ucrtBin;$env:MSYS2_USR_BIN;$env:PATH"
+          $env:PKG_CONFIG_PATH = Join-Path "$env:MSYS2_UCRT_ROOT" "lib\pkgconfig"
+          $env:CC = Join-Path $ucrtBin "gcc.exe"
+          $env:CXX = Join-Path $ucrtBin "g++.exe"
 
-          & $cmake `
+          & "$env:MSYS2_CMAKE" `
             -S . `
             -B "$env:APOLLO_BUILD_DIR" `
             -G Ninja `
             -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE `
             -DBUILD_TESTS=OFF `
+            -DCMAKE_C_COMPILER="$env:CC" `
+            -DCMAKE_CXX_COMPILER="$env:CXX" `
             -DWINUHID_PACKAGE_DIR="$env:WINUHID_PACKAGE_DIR"
 
       - name: Build Apollo
         shell: pwsh
         run: |
-          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
-          $ucrtBin = Split-Path -Parent $cmake
-          $ucrtRoot = Split-Path -Parent $ucrtBin
-          $msysRoot = Split-Path -Parent $ucrtRoot
-          $env:PATH = "$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
+          $ucrtBin = Split-Path -Parent "$env:MSYS2_CMAKE"
+          $env:PATH = "$ucrtBin;$env:MSYS2_USR_BIN;$env:PATH"
 
-          & $cmake --build "$env:APOLLO_BUILD_DIR" --target web-ui --parallel 4
-          & $cmake --build "$env:APOLLO_BUILD_DIR" --target sunshine --parallel 4
-          & $cmake --build "$env:APOLLO_BUILD_DIR" --target sunshinesvc --parallel 4
+          & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target web-ui --parallel 4
+          & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target sunshine --parallel 4
+          & "$env:MSYS2_CMAKE" --build "$env:APOLLO_BUILD_DIR" --target sunshinesvc --parallel 4
 
       - name: Package Apollo installer
         shell: pwsh
         run: |
-          $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
-          $ucrtBin = Split-Path -Parent $cmake
-          $ucrtRoot = Split-Path -Parent $ucrtBin
-          $msysRoot = Split-Path -Parent $ucrtRoot
-          $cpack = Join-Path $ucrtBin "cpack.exe"
-          $env:PATH = "C:\Program Files (x86)\NSIS;$ucrtBin;$(Join-Path $msysRoot 'usr\bin');$env:PATH"
+          $ucrtBin = Split-Path -Parent "$env:MSYS2_CMAKE"
+          $env:PATH = "C:\Program Files (x86)\NSIS;$ucrtBin;$env:MSYS2_USR_BIN;$env:PATH"
           New-Item -ItemType Directory -Force -Path "$env:DIST_DIR" | Out-Null
 
-          & $cpack `
+          & "$env:MSYS2_CPACK" `
             -G NSIS `
             --config "$env:APOLLO_BUILD_DIR\CPackConfig.cmake" `
             --verbose
