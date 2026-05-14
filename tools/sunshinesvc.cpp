@@ -42,9 +42,16 @@ DWORD WINAPI HandlerEx(DWORD dwControl, DWORD dwEventType, LPVOID lpEventData, L
       return NO_ERROR;
 
     case SERVICE_CONTROL_SESSIONCHANGE:
-      // If a new session connects to the console, restart Sunshine
-      // to allow it to spawn inside the new console session.
-      if (dwEventType == WTS_CONSOLE_CONNECT) {
+      // Restart Sunshine when the visible interactive desktop may have moved
+      // between console/RDP sessions.
+      if (dwEventType == WTS_CONSOLE_CONNECT ||
+          dwEventType == WTS_CONSOLE_DISCONNECT ||
+          dwEventType == WTS_REMOTE_CONNECT ||
+          dwEventType == WTS_REMOTE_DISCONNECT ||
+          dwEventType == WTS_SESSION_LOGON ||
+          dwEventType == WTS_SESSION_LOGOFF ||
+          dwEventType == WTS_SESSION_LOCK ||
+          dwEventType == WTS_SESSION_UNLOCK) {
         SetEvent(session_change_event);
       }
       return NO_ERROR;
@@ -108,7 +115,58 @@ LPPROC_THREAD_ATTRIBUTE_LIST AllocateProcThreadAttributeList(DWORD attribute_cou
   return list;
 }
 
-HANDLE DuplicateTokenForSession(DWORD console_session_id) {
+bool SessionHasLoggedOnUser(DWORD session_id) {
+  LPWSTR user_name = nullptr;
+  DWORD bytes = 0;
+
+  if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, session_id, WTSUserName, &user_name, &bytes)) {
+    return false;
+  }
+
+  bool has_logged_on_user = user_name != nullptr && user_name[0] != L'\0';
+  WTSFreeMemory(user_name);
+  return has_logged_on_user;
+}
+
+DWORD GetActiveInteractiveSessionId() {
+  constexpr DWORD no_session = 0xFFFFFFFF;
+
+  PWTS_SESSION_INFOW sessions = nullptr;
+  DWORD session_count = 0;
+
+  if (WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, &sessions, &session_count)) {
+    DWORD selected_session_id = no_session;
+
+    for (DWORD i = 0; i < session_count; i++) {
+      const auto &session = sessions[i];
+      if (session.SessionId == 0 || session.State != WTSActive) {
+        continue;
+      }
+
+      if (!SessionHasLoggedOnUser(session.SessionId)) {
+        continue;
+      }
+
+      selected_session_id = session.SessionId;
+      break;
+    }
+
+    WTSFreeMemory(sessions);
+
+    if (selected_session_id != no_session) {
+      return selected_session_id;
+    }
+  }
+
+  auto console_session_id = WTSGetActiveConsoleSessionId();
+  if (console_session_id != no_session && console_session_id != 0 && SessionHasLoggedOnUser(console_session_id)) {
+    return console_session_id;
+  }
+
+  return no_session;
+}
+
+HANDLE DuplicateTokenForSession(DWORD session_id) {
   HANDLE current_token;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE, &current_token)) {
     return nullptr;
@@ -123,8 +181,8 @@ HANDLE DuplicateTokenForSession(DWORD console_session_id) {
 
   CloseHandle(current_token);
 
-  // Change the duplicated token to the console session ID
-  if (!SetTokenInformation(new_token, TokenSessionId, &console_session_id, sizeof(console_session_id))) {
+  // Change the duplicated token to the target interactive session ID
+  if (!SetTokenInformation(new_token, TokenSessionId, &session_id, sizeof(session_id))) {
     CloseHandle(new_token);
     return nullptr;
   }
@@ -261,21 +319,21 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
 
   // Loop every 3 seconds until the stop event is set or Sunshine.exe is running
   while (WaitForSingleObject(stop_event, 3000) != WAIT_OBJECT_0) {
-    auto console_session_id = WTSGetActiveConsoleSessionId();
-    if (console_session_id == 0xFFFFFFFF) {
-      // No console session yet
+    auto active_session_id = GetActiveInteractiveSessionId();
+    if (active_session_id == 0xFFFFFFFF) {
+      // No visible interactive user session yet
       continue;
     }
 
-    auto console_token = DuplicateTokenForSession(console_session_id);
-    if (console_token == nullptr) {
+    auto session_token = DuplicateTokenForSession(active_session_id);
+    if (session_token == nullptr) {
       continue;
     }
 
     // Job objects cannot span sessions, so we must create one for each process
     auto job_handle = CreateJobObjectForChildProcess();
     if (job_handle == nullptr) {
-      CloseHandle(console_token);
+      CloseHandle(session_token);
       continue;
     }
 
@@ -283,8 +341,8 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
     UpdateProcThreadAttribute(startup_info.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST, &job_handle, sizeof(job_handle), nullptr, nullptr);
 
     PROCESS_INFORMATION process_info;
-    if (!CreateProcessAsUserW(console_token, L"Sunshine.exe", nullptr, nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, (LPSTARTUPINFOW) &startup_info, &process_info)) {
-      CloseHandle(console_token);
+    if (!CreateProcessAsUserW(session_token, L"Sunshine.exe", nullptr, nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, (LPSTARTUPINFOW) &startup_info, &process_info)) {
+      CloseHandle(session_token);
       CloseHandle(job_handle);
       continue;
     }
@@ -295,8 +353,8 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
       const HANDLE wait_objects[] = {stop_event, process_info.hProcess, session_change_event};
       switch (WaitForMultipleObjects(_countof(wait_objects), wait_objects, FALSE, INFINITE)) {
         case WAIT_OBJECT_0 + 2:
-          if (WTSGetActiveConsoleSessionId() == console_session_id) {
-            // The active console session didn't actually change. Let Sunshine keep running.
+          if (GetActiveInteractiveSessionId() == active_session_id) {
+            // The active interactive user session did not change. Let Sunshine keep running.
             still_running = true;
             continue;
           }
@@ -304,7 +362,7 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
         case WAIT_OBJECT_0:
           // The service is shutting down, so try to gracefully terminate Sunshine.exe.
           // If it doesn't terminate in 20 seconds, we will forcefully terminate it.
-          if (!RunTerminationHelper(console_token, process_info.dwProcessId) ||
+          if (!RunTerminationHelper(session_token, process_info.dwProcessId) ||
               WaitForSingleObject(process_info.hProcess, 20000) != WAIT_OBJECT_0) {
             // If it won't terminate gracefully, kill it now
             TerminateProcess(process_info.hProcess, ERROR_PROCESS_ABORTED);
@@ -329,7 +387,7 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
 
     CloseHandle(process_info.hThread);
     CloseHandle(process_info.hProcess);
-    CloseHandle(console_token);
+    CloseHandle(session_token);
     CloseHandle(job_handle);
   }
 
