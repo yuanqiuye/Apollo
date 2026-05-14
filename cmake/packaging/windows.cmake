@@ -69,11 +69,6 @@ install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/path/"
         DESTINATION "scripts"
         COMPONENT assets)
 
-# Configurable options for the service
-install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/autostart/"
-        DESTINATION "scripts"
-        COMPONENT autostart)
-
 # scripts
 install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/firewall/"
         DESTINATION "scripts"
@@ -104,22 +99,17 @@ execute_process(COMMAND cmd.exe /c mklink /J "${shaders_in_build_dest_native}" "
 set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}\\\\apollo.ico")
 
 # The name of the directory that will be created in C:/Program files/
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "${CPACK_PACKAGE_NAME}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "${APOLLO_PRODUCT_NAME}")
 
 # Setting components groups and dependencies
 set(CPACK_COMPONENT_GROUP_CORE_EXPANDED true)
 
 # sunshine binary
-set(CPACK_COMPONENT_APPLICATION_DISPLAY_NAME "${CMAKE_PROJECT_NAME}")
-set(CPACK_COMPONENT_APPLICATION_DESCRIPTION "${CMAKE_PROJECT_NAME} main application and required components.")
+set(CPACK_COMPONENT_APPLICATION_DISPLAY_NAME "${APOLLO_PRODUCT_NAME}")
+set(CPACK_COMPONENT_APPLICATION_DESCRIPTION "${APOLLO_PRODUCT_NAME} main application and required components.")
 set(CPACK_COMPONENT_APPLICATION_GROUP "Core")
 set(CPACK_COMPONENT_APPLICATION_REQUIRED true)
 set(CPACK_COMPONENT_APPLICATION_DEPENDS assets)
-
-# service auto-start script
-set(CPACK_COMPONENT_AUTOSTART_DISPLAY_NAME "Launch on Startup")
-set(CPACK_COMPONENT_AUTOSTART_DESCRIPTION "If enabled, launches Apollo automatically on system startup.")
-set(CPACK_COMPONENT_AUTOSTART_GROUP "Core")
 
 # assets
 set(CPACK_COMPONENT_ASSETS_DISPLAY_NAME "Required Assets")

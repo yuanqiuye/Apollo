@@ -18,7 +18,11 @@ SERVICE_STATUS service_status;
 HANDLE stop_event;
 HANDLE session_change_event;
 
-#define SERVICE_NAME "ApolloService"
+#ifndef APOLLO_WINDOWS_SERVICE_NAME
+  #define APOLLO_WINDOWS_SERVICE_NAME "Apollo-WinUHid"
+#endif
+
+#define SERVICE_NAME APOLLO_WINDOWS_SERVICE_NAME
 
 DWORD WINAPI HandlerEx(DWORD dwControl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext) {
   switch (dwControl) {

@@ -6,7 +6,12 @@ cmake_minimum_required(VERSION 3.20)
 
 project(Apollo VERSION 0.0.0
         DESCRIPTION "Self-hosted game stream host for Artemis"
-        HOMEPAGE_URL "https://github.com/ClassicOldSong/Apollo")
+        HOMEPAGE_URL "https://github.com/yuanqiuye/Apollo")
+
+set(APOLLO_PRODUCT_NAME "Apollo-WinUHid"
+        CACHE STRING "The Windows product/display name used for this fork.")
+set(APOLLO_WINDOWS_SERVICE_NAME "Apollo-WinUHid"
+        CACHE STRING "The Windows service name used by this fork.")
 
 set(PROJECT_LICENSE "GPL-3.0-only")
 

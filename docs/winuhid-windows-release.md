@@ -53,6 +53,25 @@ checkout. The script creates the code-signing certificate with
 `KeyExportPolicy NonExportable`, exports only the public `.cer`, signs the
 catalog, and updates this document plus the installer thumbprint guard.
 
+## Side-by-Side Apollo Install
+
+The Windows package is named `Apollo-WinUHid` so it can be installed beside the
+upstream Apollo package. The side-by-side identity uses:
+
+- Install directory: `C:\Program Files\Apollo-WinUHid`
+- Service name: `Apollo-WinUHid`
+- Service display name: `Apollo-WinUHid Service`
+- Service state path: `%LOCALAPPDATA%\Apollo-WinUHid`
+- Firewall rule name: `Apollo-WinUHid`
+- Start Menu shortcut: `Apollo-WinUHid`
+
+The installer creates the `Apollo-WinUHid` service with demand start and does
+not auto-start it or add the install directory to the global `PATH`. This avoids
+taking over an installed upstream Apollo service or immediately competing for
+Apollo's default ports. Running upstream Apollo and Apollo-WinUHid at the same
+time still requires configuring one of them to use a different port range
+because both products keep Apollo's default GameStream/Web UI ports.
+
 ## Manual Release
 
 Run the `Windows x64 Installer` workflow manually and set:

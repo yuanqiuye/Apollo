@@ -26,6 +26,12 @@ extern "C" {
 
 using namespace std::literals;
 
+#ifdef _WIN32
+  #ifndef APOLLO_WINDOWS_SERVICE_NAME
+    #define APOLLO_WINDOWS_SERVICE_NAME "Apollo-WinUHid"
+  #endif
+#endif
+
 void launch_ui(const std::optional<std::string> &path) {
   std::string url = std::format("https://localhost:{}", static_cast<int>(net::map_port(confighttp::PORT_HTTPS)));
   if (path) {
@@ -137,7 +143,7 @@ namespace service_ctrl {
         return;
       }
 
-      service_handle = OpenServiceA(scm_handle, "ApolloService", service_desired_access);
+      service_handle = OpenServiceA(scm_handle, APOLLO_WINDOWS_SERVICE_NAME, service_desired_access);
       if (!service_handle) {
         auto winerr = GetLastError();
         BOOST_LOG(error) << "OpenService() failed: "sv << winerr;
@@ -225,7 +231,7 @@ namespace service_ctrl {
     } while (sc.query_service_status(status) && status.dwCurrentState == SERVICE_START_PENDING);
 
     if (status.dwCurrentState != SERVICE_RUNNING) {
-      BOOST_LOG(error) << SERVICE_NAME " failed to start: "sv << status.dwWin32ExitCode;
+      BOOST_LOG(error) << APOLLO_WINDOWS_SERVICE_NAME " failed to start: "sv << status.dwWin32ExitCode;
       return false;
     }
 
