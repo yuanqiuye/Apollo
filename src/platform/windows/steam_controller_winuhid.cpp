@@ -302,7 +302,7 @@ namespace platf {
       if (!available) {
         BOOST_LOG(warning) << "WinUHidDevs Steam Controller preset is unavailable; Steam Controller emulation is disabled"sv;
       } else {
-        BOOST_LOG(info) << "WinUHidDevs Steam Controller preset is available"sv;
+        BOOST_LOG(debug) << "WinUHidDevs Steam Controller preset is available"sv;
       }
       return 0;
     }
@@ -318,11 +318,11 @@ namespace platf {
 
       const auto count = ++slot.normalized_input_ignored_after_raw_count;
       if (count <= 20 || (count % 100) == 0) {
-        BOOST_LOG(info) << "WinUHidDevs Steam Controller normalized "
-                        << kind
-                        << " ignored after raw HID input #"
-                        << count
-                        << ", client="sv << static_cast<int>(slot.client_relative_index);
+        BOOST_LOG(debug) << "WinUHidDevs Steam Controller normalized "
+                         << kind
+                         << " ignored after raw HID input #"
+                         << count
+                         << ", client="sv << static_cast<int>(slot.client_relative_index);
       }
       return true;
     }
@@ -605,12 +605,12 @@ namespace platf {
 
       const auto count = ++slot->raw_feedback_report_count;
       if (count <= 20 || (count % 100) == 0) {
-        BOOST_LOG(info) << "WinUHidDevs Steam Controller raw HID feedback #"
-                        << count
-                        << ", client="sv << static_cast<int>(slot->client_relative_index)
-                        << ", type="sv << static_cast<int>(moonlight_report_type)
-                        << ", len="sv << static_cast<int>(final_length)
-                        << ", first="sv << util::hex(report[0]).to_string_view();
+        BOOST_LOG(debug) << "WinUHidDevs Steam Controller raw HID feedback #"
+                         << count
+                         << ", client="sv << static_cast<int>(slot->client_relative_index)
+                         << ", type="sv << static_cast<int>(moonlight_report_type)
+                         << ", len="sv << static_cast<int>(final_length)
+                         << ", first="sv << util::hex(report[0]).to_string_view();
       }
     }
 

@@ -1204,7 +1204,7 @@ namespace platf {
         return -1;
       }
 
-      BOOST_LOG(info) << "Gamepad " << id.globalIndex << " will be Steam Controller through WinUHid"sv;
+      BOOST_LOG(debug) << "Gamepad " << id.globalIndex << " will be Steam Controller through WinUHid"sv;
       return raw->steam_controller->alloc_gamepad(id, metadata, std::move(feedback_queue));
     }
 
