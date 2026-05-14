@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # `cmake_path(CONVERT ... TO_NATIVE_PATH_LIST ...)` requires 3.20
 # todo - set this conditionally
 
-project(Apollo VERSION 0.0.0
+project(Apollo VERSION 2026.5.15
         DESCRIPTION "Self-hosted game stream host for Artemis"
         HOMEPAGE_URL "https://github.com/yuanqiuye/Apollo")
 
@@ -14,6 +14,7 @@ set(APOLLO_WINDOWS_SERVICE_NAME "Apollo-WinUHid"
         CACHE STRING "The Windows service name used by this fork.")
 set(APOLLO_DEFAULT_PORT "48089"
         CACHE STRING "The default base port used by this fork.")
+option(APOLLO_APPEND_GIT_VERSION "Append git hash and dirty state to local non-CI builds." OFF)
 
 set(PROJECT_LICENSE "GPL-3.0-only")
 

@@ -10,6 +10,24 @@ Major features:
 - [x] Commands for client connection/disconnection (checkout [Auto pause/resume games](https://github.com/ClassicOldSong/Apollo/wiki/Auto-pause-resume-games))
 - [x] Input only mode
 
+## Apollo-WinUHid fork changes
+
+This fork is packaged as **Apollo-WinUHid** so it can be installed side-by-side with upstream Apollo.
+
+- Uses a separate Windows product name, service name, installation path, Start Menu entries, and default web UI port (`48089`) to avoid conflicting with upstream Apollo.
+- Adds WinUHid as a Windows virtual gamepad backend alongside the existing virtual gamepad path.
+- Adds a Steam Controller raw HID path for clients that advertise `LI_CTYPE_STEAM` and `LI_CCAP_RAW_HID_REPORTS`.
+- Supports the Apollo raw HID protocol extension used by the custom VoidLink and Moonlight Android Steam Controller clients:
+  - client-to-host input packet magic `0x55000009`
+  - host-to-client encrypted control packet `0x5505`
+  - input/output/feature raw HID report types with a 64-byte report limit
+- Creates a WinUHid-backed virtual Steam Controller for `gamepad=steam` so Steam can see a Steam Controller instead of only a normalized Xbox controller.
+- Forwards raw HID output and feature feedback back to the streaming client, which is required for Steam runtime identify/ping and Steam Controller haptics.
+- Packages the WinUHid runtime and test-signed driver bundle in the Windows installer. The installer verifies the expected test certificate thumbprint before installing the driver package.
+- Keeps noisy Steam Controller raw HID report tracing at debug log level to avoid large user logs during normal play.
+
+The local development build version is pinned to `2026.5.15` by default. CI or release jobs can still override it with `BUILD_VERSION`; git hash and `.dirty` suffixes are only appended when `APOLLO_APPEND_GIT_VERSION=ON` is explicitly enabled.
+
 ## Usage
 
 Refer to LizardByte's documentation hosted on [Read the Docs](https://docs.lizardbyte.dev/projects/sunshine) for now.
