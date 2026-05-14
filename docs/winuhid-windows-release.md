@@ -47,6 +47,12 @@ and the signed `.cat` catalog.
 expected public thumbprint before importing the certificate or installing the
 driver.
 
+To rotate this test certificate, run
+`scripts/sign_winuhid_driver_package.ps1 -ForceNewCertificate` from the Apollo
+checkout. The script creates the code-signing certificate with
+`KeyExportPolicy NonExportable`, exports only the public `.cer`, signs the
+catalog, and updates this document plus the installer thumbprint guard.
+
 ## Manual Release
 
 Run the `Windows x64 Installer` workflow manually and set:
