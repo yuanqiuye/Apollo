@@ -31,8 +31,16 @@ if %ERRORLEVEL%==0 (
 
     rem Write content to file
     echo !CONTENT!> "%SERVICE_CONFIG_FILE%"
+
+    rem Stop the service only when it is running, then delete it.
+    sc query %SERVICE_NAME% | findstr /C:"RUNNING" >nul 2>&1
+    if !ERRORLEVEL!==0 (
+        net stop %SERVICE_NAME%
+    )
+
+    sc delete %SERVICE_NAME%
+    exit /b %ERRORLEVEL%
 )
 
-rem Stop and delete the Apollo-WinUHid service
-net stop %SERVICE_NAME%
-sc delete %SERVICE_NAME%
+rem Service is already absent.
+exit /b 0

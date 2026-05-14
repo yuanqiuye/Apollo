@@ -64,13 +64,19 @@ upstream Apollo package. The side-by-side identity uses:
 - Service state path: `%LOCALAPPDATA%\Apollo-WinUHid`
 - Firewall rule name: `Apollo-WinUHid`
 - Start Menu shortcut: `Apollo-WinUHid`
+- Default base port: `48089`
 
-The installer creates the `Apollo-WinUHid` service with demand start and does
-not auto-start it or add the install directory to the global `PATH`. This avoids
-taking over an installed upstream Apollo service or immediately competing for
-Apollo's default ports. Running upstream Apollo and Apollo-WinUHid at the same
-time still requires configuring one of them to use a different port range
-because both products keep Apollo's default GameStream/Web UI ports.
+The default port family is offset from upstream Apollo's default port family:
+
+- GameStream HTTPS: `48084`
+- GameStream HTTP / Moonlight host port: `48089`
+- Web UI: `48090`
+- RTSP setup: `48110`
+
+The installer creates the `Apollo-WinUHid` service with auto start and starts it
+after installation. It does not add the install directory to the global `PATH`.
+This avoids taking over an installed upstream Apollo service while still letting
+Apollo-WinUHid run as its own service by default.
 
 ## Manual Release
 

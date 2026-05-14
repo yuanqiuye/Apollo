@@ -24,6 +24,18 @@ HANDLE session_change_event;
 
 #define SERVICE_NAME APOLLO_WINDOWS_SERVICE_NAME
 
+std::wstring WidenServiceName() {
+  auto length = MultiByteToWideChar(CP_UTF8, 0, SERVICE_NAME, -1, nullptr, 0);
+  if (length <= 1) {
+    return L"sunshine";
+  }
+
+  std::wstring result(length, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, SERVICE_NAME, -1, result.data(), length);
+  result.resize(length - 1);
+  return result;
+}
+
 DWORD WINAPI HandlerEx(DWORD dwControl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext) {
   switch (dwControl) {
     case SERVICE_CONTROL_INTERROGATE:
@@ -121,17 +133,20 @@ HANDLE DuplicateTokenForSession(DWORD console_session_id) {
 }
 
 HANDLE OpenLogFileHandle() {
-  WCHAR log_file_name[MAX_PATH];
+  WCHAR temp_path[MAX_PATH];
 
-  // Create sunshine.log in the Temp folder (usually %SYSTEMROOT%\Temp)
-  GetTempPathW(_countof(log_file_name), log_file_name);
-  wcscat_s(log_file_name, L"sunshine.log");
+  // Create a service-specific log in the Temp folder (usually %SYSTEMROOT%\Temp).
+  // Side-by-side Apollo services cannot share the same inherited log handle.
+  GetTempPathW(_countof(temp_path), temp_path);
+  std::wstring log_file_name = temp_path;
+  log_file_name += WidenServiceName();
+  log_file_name += L"-sunshine.log";
 
   // The file handle must be inheritable for our child process to use it
   SECURITY_ATTRIBUTES security_attributes = {sizeof(security_attributes), nullptr, TRUE};
 
   // Overwrite the old sunshine.log
-  return CreateFileW(log_file_name, GENERIC_WRITE, FILE_SHARE_READ, &security_attributes, CREATE_ALWAYS, 0, nullptr);
+  return CreateFileW(log_file_name.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &security_attributes, CREATE_ALWAYS, 0, nullptr);
 }
 
 bool RunTerminationHelper(HANDLE console_token, DWORD pid) {

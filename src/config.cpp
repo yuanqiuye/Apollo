@@ -48,6 +48,10 @@ using namespace std::literals;
 
 #define APPS_JSON_PATH platf::appdata().string() + "/apps.json"
 
+#ifndef APOLLO_DEFAULT_PORT
+  #define APOLLO_DEFAULT_PORT 47989
+#endif
+
 namespace config {
 
   namespace nv {
@@ -593,7 +597,7 @@ namespace config {
     {},  // Password Salt
     platf::appdata().string() + "/sunshine.conf",  // config file
     {},  // cmd args
-    47989,  // Base port number
+    APOLLO_DEFAULT_PORT,  // Base port number
     "ipv4",  // Address family
     platf::appdata().string() + "/sunshine.log",  // log file
     false,  // notify_pre_releases

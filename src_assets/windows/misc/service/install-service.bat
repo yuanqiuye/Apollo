@@ -9,8 +9,9 @@ set "SERVICE_BIN=%ROOT_DIR%\tools\sunshinesvc.exe"
 set "SERVICE_CONFIG_DIR=%LOCALAPPDATA%\Apollo-WinUHid"
 set "SERVICE_CONFIG_FILE=%SERVICE_CONFIG_DIR%\service_start_type.txt"
 
-rem Set service to demand start. It will be changed to auto later if the user selected that option.
-set SERVICE_START_TYPE=demand
+rem Apollo-WinUHid uses a separate default port family, so the service can
+rem auto-start without taking over an upstream Apollo service.
+set SERVICE_START_TYPE=auto
 
 rem Check if Apollo-WinUHid already exists
 sc qc %SERVICE_NAME% > nul 2>&1
@@ -37,13 +38,13 @@ if exist "%SERVICE_CONFIG_FILE%" (
 
     echo Raw saved start type: [!SAVED_START_TYPE!]
 
-    rem Check start type
+    rem Check start type. The old Apollo-WinUHid package used demand start only
+    rem to avoid port conflicts. Ignore a saved demand start from that build and
+    rem use this package's auto-start default instead.
     if "!SAVED_START_TYPE!"=="2-delayed" (
         set SERVICE_START_TYPE=delayed-auto
     ) else if "!SAVED_START_TYPE!"=="2" (
         set SERVICE_START_TYPE=auto
-    ) else if "!SAVED_START_TYPE!"=="3" (
-        set SERVICE_START_TYPE=demand
     ) else if "!SAVED_START_TYPE!"=="4" (
         set SERVICE_START_TYPE=disabled
     )
@@ -58,3 +59,8 @@ sc %SC_CMD% %SERVICE_NAME% binPath= "\"%SERVICE_BIN%\"" start= %SERVICE_START_TY
 
 rem Set the description of the service
 sc description %SERVICE_NAME% "Apollo-WinUHid is a self-hosted game stream host for Moonlight with WinUHid support."
+
+rem Start the service unless it was explicitly disabled before reinstall.
+if /I not "!SERVICE_START_TYPE!"=="disabled" (
+    net start %SERVICE_NAME%
+)

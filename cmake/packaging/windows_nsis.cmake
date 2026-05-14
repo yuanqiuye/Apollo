@@ -29,7 +29,7 @@ set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
         nsExec::ExecToLog '\\\"$INSTDIR\\\\scripts\\\\uninstall-service.bat\\\"'
         nsExec::ExecToLog '\\\"$INSTDIR\\\\sunshine.exe\\\" --restore-nvprefs-undo'
         MessageBox MB_YESNO|MB_ICONQUESTION \
-            'Do you want to remove Virtual Gamepad?' \
+            'Do you want to remove shared Virtual Gamepad drivers (ViGEmBus and WinUHid)? Choose No if upstream Apollo, Sunshine, or another streaming host still uses them.' \
             /SD IDNO IDNO NoGamepad
             nsExec::ExecToLog \
               'powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
@@ -37,7 +37,7 @@ set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
               skipped if no
         NoGamepad:
         MessageBox MB_YESNO|MB_ICONQUESTION \
-            'Do you want to remove SudoVDA Virtual Display Driver?' \
+            'Do you want to remove the shared SudoVDA Virtual Display Driver? Choose No if upstream Apollo, Sunshine, or another streaming host still uses it.' \
             /SD IDNO IDNO NoSudoVDA
             nsExec::ExecToLog '\\\"$INSTDIR\\\\drivers\\\\sudovda\\\\uninstall.bat\\\"'; skipped if no
         NoSudoVDA:
