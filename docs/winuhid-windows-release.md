@@ -28,6 +28,25 @@ The signed driver bundle is still taken from Apollo's packaged
 extended with a production driver signing step. The user-mode WinUHid DLLs are
 rebuilt from source by CI.
 
+## Test-Signed Driver Bundle
+
+The packaged WinUHid driver bundle is test-signed, not Microsoft
+attestation-signed or WHQL-signed.
+
+The bundled public test-signing certificate is:
+
+- Subject: `CN=WinUHid Steam Controller Test Signing`
+- Thumbprint: `F1FF0896A2D804CF361A9E0E9FAF17B517F7446A`
+
+The private key for this certificate must remain local to the signing machine.
+Do not commit a `.pfx`, `.pvk`, `.key`, `.pem`, or any other private-key export
+to this repository. The installer package contains only the public `.cer` file
+and the signed `.cat` catalog.
+
+`install-winuhid.ps1` verifies that the bundled `.cer` and `.cat` both match the
+expected public thumbprint before importing the certificate or installing the
+driver.
+
 ## Manual Release
 
 Run the `Windows x64 Installer` workflow manually and set:

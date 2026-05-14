@@ -11,6 +11,8 @@ $infPath = Join-Path $driverDir "WinUHidDriver.inf"
 $catPath = Join-Path $driverDir "WinUHidDriver.cat"
 $dllPath = Join-Path $driverDir "WinUHidDriver.dll"
 $certPath = Join-Path $driverDir "WinUHidSteamControllerTestSigning.cer"
+$expectedWinUHidSigningSubject = "CN=WinUHid Steam Controller Test Signing"
+$expectedWinUHidSigningThumbprint = "F1FF0896A2D804CF361A9E0E9FAF17B517F7446A"
 
 function Assert-File {
     param([Parameter(Mandatory)] [string]$Path)
@@ -37,6 +39,65 @@ function Invoke-Checked {
     if ($AllowedExitCodes -notcontains $exitCode) {
         throw "$FilePath failed with exit code $exitCode"
     }
+}
+
+function Format-Thumbprint {
+    param([Parameter(Mandatory)] [string]$Thumbprint)
+
+    return ($Thumbprint -replace "\s", "").ToUpperInvariant()
+}
+
+function Get-CertificateFileThumbprint {
+    param([Parameter(Mandatory)] [string]$Path)
+
+    $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($Path)
+    try {
+        return Format-Thumbprint $certificate.Thumbprint
+    }
+    finally {
+        $certificate.Reset()
+    }
+}
+
+function Assert-WinUHidSigningBundle {
+    $expectedThumbprint = Format-Thumbprint $expectedWinUHidSigningThumbprint
+    $certificateThumbprint = Get-CertificateFileThumbprint $certPath
+
+    if ($certificateThumbprint -ne $expectedThumbprint) {
+        throw "Unexpected WinUHid signing certificate thumbprint: $certificateThumbprint"
+    }
+
+    $signature = Get-AuthenticodeSignature -FilePath $catPath
+    if ($null -eq $signature.SignerCertificate) {
+        throw "WinUHid catalog does not contain a signer certificate."
+    }
+
+    $signerThumbprint = Format-Thumbprint $signature.SignerCertificate.Thumbprint
+    if ($signerThumbprint -ne $expectedThumbprint) {
+        throw "Unexpected WinUHid catalog signer thumbprint: $signerThumbprint"
+    }
+
+    Write-Information "WinUHid test-signing thumbprint verified: $expectedThumbprint"
+}
+
+function Remove-StaleWinUHidTestCertificates {
+    param([Parameter(Mandatory)] [string]$StoreName)
+
+    $expectedThumbprint = Format-Thumbprint $expectedWinUHidSigningThumbprint
+    $storePath = "Cert:\LocalMachine\$StoreName"
+    if (-not (Test-Path -LiteralPath $storePath)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $storePath |
+        Where-Object {
+            $_.Subject -eq $expectedWinUHidSigningSubject -and
+            (Format-Thumbprint $_.Thumbprint) -ne $expectedThumbprint
+        } |
+        ForEach-Object {
+            Write-Information "Removing stale WinUHid test-signing certificate from ${StoreName}: $($_.Thumbprint)"
+            Remove-Item -LiteralPath $_.PSPath -Force
+        }
 }
 
 function Get-WinUHidDevices {
@@ -192,6 +253,7 @@ Assert-File $infPath
 Assert-File $catPath
 Assert-File $dllPath
 Assert-File $certPath
+Assert-WinUHidSigningBundle
 
 $signature = Get-AuthenticodeSignature -FilePath $catPath
 Write-Information "WinUHid catalog signature status: $($signature.Status)"
@@ -206,8 +268,16 @@ if (-not (Test-IsAdministrator)) {
     throw "WinUHid driver installation requires an elevated PowerShell session."
 }
 
+Remove-StaleWinUHidTestCertificates -StoreName "Root"
+Remove-StaleWinUHidTestCertificates -StoreName "TrustedPublisher"
+
 Invoke-Checked -FilePath "certutil.exe" -Arguments @("-addstore", "-f", "Root", $certPath)
 Invoke-Checked -FilePath "certutil.exe" -Arguments @("-addstore", "-f", "TrustedPublisher", $certPath)
+
+$signature = Get-AuthenticodeSignature -FilePath $catPath
+if ($signature.Status -ne "Valid") {
+    throw "WinUHid catalog signature is not trusted after certificate import: $($signature.Status)"
+}
 
 $devices = @(Get-WinUHidDevices)
 if ($devices.Count -eq 0) {
