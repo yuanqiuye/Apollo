@@ -3,8 +3,8 @@
  * @brief Handles launching Sunshine.exe into user sessions as SYSTEM
  */
 #define WIN32_LEAN_AND_MEAN
-#include <format>
 #include <string>
+#include <format>
 #include <Windows.h>
 #include <WtsApi32.h>
 
@@ -17,6 +17,8 @@ SERVICE_STATUS_HANDLE service_status_handle;
 SERVICE_STATUS service_status;
 HANDLE stop_event;
 HANDLE session_change_event;
+
+constexpr DWORD NO_SESSION = 0xFFFFFFFF;
 
 #ifndef APOLLO_WINDOWS_SERVICE_NAME
   #define APOLLO_WINDOWS_SERVICE_NAME "Apollo-WinUHid"
@@ -34,6 +36,30 @@ std::wstring WidenServiceName() {
   MultiByteToWideChar(CP_UTF8, 0, SERVICE_NAME, -1, result.data(), length);
   result.resize(length - 1);
   return result;
+}
+
+void WriteServiceLog(HANDLE log_file_handle, const std::string &message) {
+  if (log_file_handle == nullptr || log_file_handle == INVALID_HANDLE_VALUE) {
+    return;
+  }
+
+  SYSTEMTIME now = {};
+  GetLocalTime(&now);
+
+  auto line = std::format(
+    "[svc {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}] {}\r\n",
+    now.wYear,
+    now.wMonth,
+    now.wDay,
+    now.wHour,
+    now.wMinute,
+    now.wSecond,
+    now.wMilliseconds,
+    message
+  );
+
+  DWORD written = 0;
+  WriteFile(log_file_handle, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
 }
 
 DWORD WINAPI HandlerEx(DWORD dwControl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext) {
@@ -128,15 +154,16 @@ bool SessionHasLoggedOnUser(DWORD session_id) {
   return has_logged_on_user;
 }
 
-DWORD GetActiveInteractiveSessionId() {
-  constexpr DWORD no_session = 0xFFFFFFFF;
+struct SessionSelection {
+  DWORD session_id = NO_SESSION;
+  bool console_fallback = false;
+};
 
+SessionSelection GetActiveInteractiveSession() {
   PWTS_SESSION_INFOW sessions = nullptr;
   DWORD session_count = 0;
 
   if (WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, &sessions, &session_count)) {
-    DWORD selected_session_id = no_session;
-
     for (DWORD i = 0; i < session_count; i++) {
       const auto &session = sessions[i];
       if (session.SessionId == 0 || session.State != WTSActive) {
@@ -147,23 +174,20 @@ DWORD GetActiveInteractiveSessionId() {
         continue;
       }
 
-      selected_session_id = session.SessionId;
-      break;
+      auto selected_session_id = session.SessionId;
+      WTSFreeMemory(sessions);
+      return {selected_session_id, false};
     }
 
     WTSFreeMemory(sessions);
-
-    if (selected_session_id != no_session) {
-      return selected_session_id;
-    }
   }
 
   auto console_session_id = WTSGetActiveConsoleSessionId();
-  if (console_session_id != no_session && console_session_id != 0 && SessionHasLoggedOnUser(console_session_id)) {
-    return console_session_id;
+  if (console_session_id != NO_SESSION && console_session_id != 0) {
+    return {console_session_id, true};
   }
 
-  return no_session;
+  return {};
 }
 
 HANDLE DuplicateTokenForSession(DWORD session_id) {
@@ -191,19 +215,36 @@ HANDLE DuplicateTokenForSession(DWORD session_id) {
 }
 
 HANDLE OpenLogFileHandle() {
-  WCHAR temp_path[MAX_PATH];
+  WCHAR module_path[MAX_PATH];
+  std::wstring log_file_name;
 
-  // Create a service-specific log in the Temp folder (usually %SYSTEMROOT%\Temp).
-  // Side-by-side Apollo services cannot share the same inherited log handle.
-  GetTempPathW(_countof(temp_path), temp_path);
-  std::wstring log_file_name = temp_path;
-  log_file_name += WidenServiceName();
-  log_file_name += L"-sunshine.log";
+  if (GetModuleFileNameW(nullptr, module_path, _countof(module_path)) != 0) {
+    std::wstring install_dir = module_path;
+    auto tools_separator = install_dir.find_last_of(L"\\/");
+    if (tools_separator != std::wstring::npos) {
+      install_dir.resize(tools_separator);
+      auto root_separator = install_dir.find_last_of(L"\\/");
+      if (root_separator != std::wstring::npos) {
+        install_dir.resize(root_separator);
+        auto config_dir = install_dir + L"\\config";
+        CreateDirectoryW(config_dir.c_str(), nullptr);
+        log_file_name = config_dir + L"\\sunshinesvc.log";
+      }
+    }
+  }
+
+  if (log_file_name.empty()) {
+    WCHAR temp_path[MAX_PATH];
+    GetTempPathW(_countof(temp_path), temp_path);
+    log_file_name = temp_path;
+    log_file_name += WidenServiceName();
+    log_file_name += L"-sunshine.log";
+  }
 
   // The file handle must be inheritable for our child process to use it
   SECURITY_ATTRIBUTES security_attributes = {sizeof(security_attributes), nullptr, TRUE};
 
-  // Overwrite the old sunshine.log
+  // Overwrite the old service-wrapper log
   return CreateFileW(log_file_name.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &security_attributes, CREATE_ALWAYS, 0, nullptr);
 }
 
@@ -317,22 +358,40 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
   service_status.dwCurrentState = SERVICE_RUNNING;
   SetServiceStatus(service_status_handle, &service_status);
 
+  std::string last_service_status;
+  auto log_status_once = [&](const std::string &status) {
+    if (status == last_service_status) {
+      return;
+    }
+
+    WriteServiceLog(log_file_handle, status);
+    last_service_status = status;
+  };
+
   // Loop every 3 seconds until the stop event is set or Sunshine.exe is running
   while (WaitForSingleObject(stop_event, 3000) != WAIT_OBJECT_0) {
-    auto active_session_id = GetActiveInteractiveSessionId();
-    if (active_session_id == 0xFFFFFFFF) {
-      // No visible interactive user session yet
+    auto active_session = GetActiveInteractiveSession();
+    if (active_session.session_id == NO_SESSION) {
+      log_status_once("Waiting for an active user session or console session");
       continue;
     }
 
-    auto session_token = DuplicateTokenForSession(active_session_id);
+    log_status_once(std::format(
+      "Launching Sunshine.exe in session {} ({})",
+      active_session.session_id,
+      active_session.console_fallback ? "console fallback" : "active logged-on user"
+    ));
+
+    auto session_token = DuplicateTokenForSession(active_session.session_id);
     if (session_token == nullptr) {
+      log_status_once(std::format("Failed to duplicate token for session {} [0x{:08X}]", active_session.session_id, GetLastError()));
       continue;
     }
 
     // Job objects cannot span sessions, so we must create one for each process
     auto job_handle = CreateJobObjectForChildProcess();
     if (job_handle == nullptr) {
+      log_status_once(std::format("Failed to create child process job object [0x{:08X}]", GetLastError()));
       CloseHandle(session_token);
       continue;
     }
@@ -342,10 +401,13 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
 
     PROCESS_INFORMATION process_info;
     if (!CreateProcessAsUserW(session_token, L"Sunshine.exe", nullptr, nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, (LPSTARTUPINFOW) &startup_info, &process_info)) {
+      log_status_once(std::format("Failed to launch Sunshine.exe in session {} [0x{:08X}]", active_session.session_id, GetLastError()));
       CloseHandle(session_token);
       CloseHandle(job_handle);
       continue;
     }
+
+    WriteServiceLog(log_file_handle, std::format("Sunshine.exe started as pid {} in session {}", process_info.dwProcessId, active_session.session_id));
 
     bool still_running;
     do {
@@ -353,11 +415,12 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
       const HANDLE wait_objects[] = {stop_event, process_info.hProcess, session_change_event};
       switch (WaitForMultipleObjects(_countof(wait_objects), wait_objects, FALSE, INFINITE)) {
         case WAIT_OBJECT_0 + 2:
-          if (GetActiveInteractiveSessionId() == active_session_id) {
+          if (GetActiveInteractiveSession().session_id == active_session.session_id) {
             // The active interactive user session did not change. Let Sunshine keep running.
             still_running = true;
             continue;
           }
+          WriteServiceLog(log_file_handle, "Session target changed; restarting Sunshine.exe");
           // Fall-through to terminate Sunshine.exe and start it again.
         case WAIT_OBJECT_0:
           // The service is shutting down, so try to gracefully terminate Sunshine.exe.
@@ -374,16 +437,20 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv) {
           {
             // Sunshine terminated itself.
 
-            DWORD exit_code;
+            DWORD exit_code = 0;
             if (GetExitCodeProcess(process_info.hProcess, &exit_code) && exit_code == ERROR_SHUTDOWN_IN_PROGRESS) {
               // Sunshine is asking for us to shut down, so gracefully stop ourselves.
               SetEvent(stop_event);
+            } else {
+              WriteServiceLog(log_file_handle, std::format("Sunshine.exe exited from session {} [0x{:08X}]", active_session.session_id, exit_code));
             }
             still_running = false;
             break;
           }
       }
     } while (still_running);
+
+    last_service_status.clear();
 
     CloseHandle(process_info.hThread);
     CloseHandle(process_info.hProcess);
